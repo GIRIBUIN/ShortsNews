@@ -63,7 +63,7 @@ main_placeholder = st.empty()
 # --- 사이드바 UI (변경 없음) ---
 with st.sidebar:
     st.header("뉴스 검색")
-    st.text_input("검색할 키워드를 입력하세요:", placeholder="예: 수능, 반도체", key='keyword_input', disabled=st.session_state.processing)
+    st.text_input("검색할 키워드를 입력하세요:", placeholder="예: 건국대, AIOT", key='keyword_input', disabled=st.session_state.processing)
     st.button("뉴스 검색", on_click=request_search, use_container_width=True, disabled=st.session_state.processing)
     st.divider()
     st.header("최근 검색 기록")
@@ -75,8 +75,24 @@ with st.sidebar:
 
 # --- 메인 화면 처리 ---
 if st.session_state.processing:
-    # ... (로딩 화면 로직은 변경 없음) ...
-    pass
+    with main_placeholder.container():
+        st.info(f"AI가 '{st.session_state.keyword_to_search}' 관련 뉴스를 검색하고 요약하는 중입니다...")
+        with st.spinner("잠시만 기다려주세요..."):
+            keyword = st.session_state.keyword_to_search
+            is_success = shorts_news.process_keyword_search(keyword)
+            if is_success:
+                current_articles = shorts_news.get_article_list_for_display()
+                st.session_state.news_articles = current_articles
+                st.session_state.search_history = [item for item in st.session_state.search_history if item['keyword'] != keyword]
+                st.session_state.search_history.insert(0, {'keyword': keyword, 'articles': current_articles})
+                st.session_state.search_history = st.session_state.search_history[:5]
+            else:
+                st.session_state.news_articles = []
+                st.session_state.search_error = "뉴스를 가져오는 데 실패했습니다."
+    st.session_state.processing = False
+    st.rerun()
+
+
 elif st.session_state.news_articles:
     with main_placeholder.container():
         col1, col2 = st.columns([1.4, 1])
