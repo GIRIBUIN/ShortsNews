@@ -1,11 +1,9 @@
-import os
-import sys
 import urllib.request
-import requests
 from bs4 import BeautifulSoup
 import html
 import json
 import config
+
 
 CLIENT_ID = config.NAVER_CLIENT_ID
 CLIENT_SECRET = config.NAVER_CLIENT_SECRET
@@ -29,8 +27,6 @@ def get_naver_news(keyword):
     request.add_header("X-Naver-Client-Id", CLIENT_ID)
     request.add_header("X-Naver-Client-Secret", CLIENT_SECRET)
 
-    soup = BeautifulSoup(response.text, 'html.parser')
-
 
     try:
         response = urllib.request.urlopen(request)
@@ -47,7 +43,7 @@ def get_naver_news(keyword):
         return None
     
 if __name__ == "__main__":
-    news_data = get_naver_news('이재명')
+    news_data = get_naver_news("삼성전자")
 
     if news_data and 'items' in news_data:
         articles = news_data['items']
@@ -67,4 +63,4 @@ if __name__ == "__main__":
             print(f"원본 요약: {description}")
             print(f"=======================================================")
     else:
-        print("뉴스를 찾을 수 없거나 API 호출에 실패했습니다.")
+        print("No News")

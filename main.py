@@ -1,27 +1,82 @@
-import torch
-import matplotlib
-import pandas
-from transformers import pipeline
+# main.py
+import shorts_news # 우리의 컨트롤러를 임포트
 
-summarizer = pipeline("summarization", model="gogamza/kobart-base-v2")
+def print_news_list():
+    """현재 뉴스 목록을 출력합니다."""
+    articles = shorts_news.get_article_list_for_display()
+    if not articles:
+        print("No News.")
+        return
+        
+    print("\n--- Search News List ---")
+    for article in articles:
+        print(f"ID: {article['id']}, 제목: {article['title']}")
 
-# 2. 긴 뉴스 기사 텍스트 예시 (사용자 입력 대체 가능)
-input_text = """(서울=뉴스1) 강민경 기자 = 다카이치 사나에 일본 총리가 대만 유사시 개입을 시사한 발언이 중일 갈등을 격화하는 상황에서 동아시아를 둘러싼 신냉전 구도가 더 첨예해졌다.
+def run_console_app():
+    """사용자 입력을 받아 앱을 실행하는 메인 루프입니다."""
+    while True:
+        print("\n--- Shorts News ---")
+        print("1. 새 키워드로 뉴스 검색")
+        print("2. 현재 검색된 뉴스 목록 보기")
+        print("3. 유사 뉴스 찾기 및 키워드 추천")
+        print("4. 종료")
+        
+        choice = input("Enter Mode (1-4): ")
 
-러시아와 북한이 중국과 한목소리를 내며 일본을 비판하는 가운데 미국과 대만은 일본을 지지하고 나서면서 아·태 지역에서 미국·일본·대만과 중국·러시아·북한의 대립 구도가 선명해졌다는 분석이 나온다.
+        if choice == '1':
+            search_keyword = input("Enter News Keywords: ")
+            if shorts_news.process_keyword_search(search_keyword):
+                print("\n뉴스 검색 및 처리 완료.")
+                print_news_list()
+        elif choice == '2':
+            print_news_list()
+        elif choice == '3':
+            try:
+                selected_id = int(input("Enter News ID: "))
+                result, error_message = shorts_news.find_and_recommend(selected_id)
 
-일본을 서방 진영의 일부로 간주하는 러시아는 중국을 강하게 두둔했다. 러시아가 지배하고 있는 쿠릴 열도 남단 4개 섬에 대해 일본이 영유권을 주장해 양국간 영토 분쟁 문제도 있다.
+                if error_message:
+                    print(error_message)
+                    continue
 
-중국 관영 글로벌타임스에 따르면 마리야 자하로바 러시아 외무부 대변인은 20일(현지시간) "80년이 지났는데도 일본은 국제법에 명시된 제2차 세계대전의 결과를 인정하지 않고 있다"며 "일본 정치인들이 역사를 이해하고 무책임한 발언이 무엇으로 이어지는지 알았으면 좋겠다"고 말했다."""
+                # 결과 출력
+                print(f"\n--- 선택된 뉴스: '{result['selected']['title']}' ---")
+                print("--- 유사한 뉴스 ---")
+                for item in result['similar_articles']:
+                    print(f"  ID: {item['article']['id']}, 제목: {item['article']['title']} (유사도: {item['similarity']:.4f})")
+                
+                keywords_dict = result['recommended_keywords']
+                
+                if keywords_dict and keywords_dict.get('all'):
+                    print("\n[추천 검색어]")
+                
+                # 단일 키워드와 복합 키워드를 분리하여 더 보기 좋게 출력
+                if keywords_dict.get('single'):
+                    print(f"  - 단일 키워드: " + " ".join(f"'{k}'" for k in keywords_dict['single']))
+                
+                if keywords_dict.get('compound'):
+                    print(f"  - 복합 키워드: " + " ".join(f"'{k}'" for k in keywords_dict['compound']))
+                else:
+                    # 추천 검색어가 없는 경우 메시지 출력
+                    print("\n추천 검색어를 생성하지 못했습니다.")
 
-# 3. 요약 실행
-summary_result = summarizer(
-    input_text, 
-    max_length=150,  # 최대 길이 설정
-    min_length=30,   # 최소 길이 설정
-    do_sample=False  # 확률 기반이 아닌 결정론적 결과 생성
-)
+            except ValueError:
+                print("Invalid News ID(may be 1~10).")
+        elif choice == '4':
+            print("Terminate Program.")
+            break
+        else:
+            print("Invalid Mode(1~4)")
 
-print("--- 요약 결과 ---")
-print(summary_result[0]['summary_text'])
-
+if __name__ == "__main__":
+    # 필요한 라이브러리 설치 안내 (최초 실행 시)
+    try:
+        import konlpy
+    except ImportError:
+        print("="*50)
+        print("필수 라이브러리가 설치.")
+        print("'pip install konlpy JPype1'")
+        print("Java(JDK) 8")
+        print("="*50)
+    else:
+        run_console_app()
