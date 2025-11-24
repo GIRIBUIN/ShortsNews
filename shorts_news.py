@@ -31,6 +31,7 @@ def process_keyword_search(keyword):
             'title': title,
             'url': url,
             'summary': summary,
+            'description' : description,
             'embedding': embedding
         }
         processed_articles.append(processed_article)

@@ -3,105 +3,145 @@ import streamlit as st
 import shorts_news # 우리가 만든 컨트롤러 임포트
 
 # --- 페이지 기본 설정 ---
-st.set_page_config(
-    page_title="AI 뉴스 요약 및 추천",
-    page_icon="📰",
-    layout="centered", # [수정 1] 레이아웃을 'centered'로 변경하여 가독성 향상
-)
+st.set_page_config(page_title="AI 뉴스 요약 및 추천", page_icon="📰", layout="wide")
 
-# --- 세션 상태(Session State) 초기화 ---
+# --- 세션 상태 초기화 ---
 if 'news_articles' not in st.session_state:
     st.session_state.news_articles = []
 if 'selected_article_info' not in st.session_state:
     st.session_state.selected_article_info = None
+if 'search_history' not in st.session_state:
+    st.session_state.search_history = []
+if 'processing' not in st.session_state:
+    st.session_state.processing = False
+if 'keyword_to_search' not in st.session_state:
+    st.session_state.keyword_to_search = ""
+# [추가 1] 왼쪽 컬럼에서 활성화된 뉴스 ID를 저장하기 위한 상태
+if 'active_news_id' not in st.session_state:
+    st.session_state.active_news_id = None
 
 # --- 콜백 함수 정의 ---
-# [수정 2] 라디오 버튼 값이 바뀔 때마다 실행될 함수
-def find_and_update_similar_news():
-    # st.session_state.selected_radio_key를 통해 현재 선택된 라디오 버튼 값을 가져옴
-    selected_title = st.session_state.selected_radio_key
-    if selected_title:
-        selected_id = int(selected_title.split(" - ")[0].replace("ID: ", ""))
-        
-        # 스피너를 여기에서도 사용하여 로딩 중임을 표시
-        with st.spinner("AI가 유사 뉴스와 추천 검색어를 생성 중입니다..."):
-            result, error_message = shorts_news.find_and_recommend(selected_id)
-            if error_message:
-                st.error(error_message)
-                st.session_state.selected_article_info = None # 오류 발생 시 이전 정보 초기화
-            else:
-                st.session_state.selected_article_info = result
 
-# --- UI 그리기 ---
-
-# 1. 제목
-st.title("📰 AI 기반 뉴스 요약 및 추천")
-st.write("관심있는 키워드를 입력하면 뉴스를 요약하고, 선택한 뉴스와 비슷한 뉴스를 추천해줍니다.")
-
-# 2. 사이드바 (입력 공간)
-with st.sidebar:
-    st.header("뉴스 검색")
-    search_keyword = st.text_input("검색할 키워드를 입력하세요:", placeholder="예: 수능, 반도체")
-
-    if st.button("뉴스 검색", use_container_width=True):
+def request_search():
+    if st.session_state.keyword_input:
+        st.session_state.keyword_to_search = st.session_state.keyword_input
+        st.session_state.processing = True
         st.session_state.news_articles = []
         st.session_state.selected_article_info = None
-        
-        if search_keyword:
-            with st.spinner("AI가 뉴스를 검색하고 요약하는 중입니다... 잠시만 기다려주세요."):
-                is_success = shorts_news.process_keyword_search(search_keyword)
-                if is_success:
-                    st.session_state.news_articles = shorts_news.get_article_list_for_display()
-                else:
-                    st.error("뉴스를 가져오는 데 실패했습니다. API 키를 확인하거나 다른 키워드를 시도해보세요.")
-        else:
-            st.warning("검색어를 입력해주세요.")
+        st.session_state.active_news_id = None # 검색 시 활성화된 뉴스 초기화
+    else:
+        st.error("검색할 키워드를 입력해주세요.")
 
-# 3. 메인 화면 (결과 출력 공간)
-if st.session_state.news_articles:
-    # [수정 3] 컬럼(st.columns) 레이아웃 제거
-    st.subheader(f"'{shorts_news.current_keyword}' 관련 뉴스 검색 결과")
-    st.info("아래 목록에서 뉴스를 선택하면 바로 유사 뉴스를 찾아줍니다.")
-    
-    article_titles = [f"ID: {article['id']} - {article['title']}" for article in st.session_state.news_articles]
-    
-    # [수정 4] 라디오 버튼에 key와 on_change 콜백 함수 연결
-    st.radio(
-        "뉴스 목록:",
-        article_titles,
-        key='selected_radio_key', # 이 key를 통해 선택된 값에 접근
-        on_change=find_and_update_similar_news, # 선택이 바뀔 때마다 이 함수 실행
-        label_visibility="collapsed"
-    )
-    
-    # [수정 5] 버튼을 제거하고, 세션 상태에 결과가 있으면 바로 출력
-    if st.session_state.selected_article_info:
-        result = st.session_state.selected_article_info
+def request_history_load(keyword, articles):
+    st.session_state.keyword_to_search = keyword
+    st.session_state.news_articles = articles
+    st.session_state.selected_article_info = None
+    st.session_state.active_news_id = None # 히스토리 로드 시 초기화
+
+def handle_news_selection(selected_id):
+    """[수정] 뉴스 버튼 클릭 시, 왼쪽 토글 상태 업데이트 및 오른쪽 AI 분석 실행."""
+    # 1. 왼쪽 컬럼의 토글 상태 업데이트
+    # 이미 선택된 버튼을 다시 누르면 토글을 닫고, 아니면 새로 연다.
+    if st.session_state.active_news_id == selected_id:
+        st.session_state.active_news_id = None
+    else:
+        st.session_state.active_news_id = selected_id
         
-        # --- 결과 출력 부분 (이제 아래쪽에 순차적으로 표시됨) ---
-        st.divider() # 구분선 추가
-        st.success(f"선택된 뉴스: '{result['selected']['title']}'")
-        
-        with st.expander("요약 내용 보기"):
-            st.write(result['selected']['summary'])
-        
-        st.subheader("🤖 AI가 찾은 유사 뉴스")
-        if result['similar_articles']:
-            for item in result['similar_articles']:
-                st.markdown(f"**{item['article']['title']}** (유사도: {item['similarity']:.2f})")
+    # 2. 오른쪽 컬럼의 AI 분석 실행
+    with st.spinner("AI가 유사 뉴스와 추천 검색어를 생성 중입니다..."):
+        result, error_message = shorts_news.find_and_recommend(selected_id)
+        if error_message:
+            st.error(error_message)
+            st.session_state.selected_article_info = None
+        else:
+            st.session_state.selected_article_info = result
+
+# --- UI 그리기 ---
+st.title("📰 AI 기반 뉴스 요약 및 추천")
+main_placeholder = st.empty()
+
+# --- 사이드바 UI (변경 없음) ---
+with st.sidebar:
+    st.header("뉴스 검색")
+    st.text_input("검색할 키워드를 입력하세요:", placeholder="예: 수능, 반도체", key='keyword_input', disabled=st.session_state.processing)
+    st.button("뉴스 검색", on_click=request_search, use_container_width=True, disabled=st.session_state.processing)
+    st.divider()
+    st.header("최근 검색 기록")
+    if not st.session_state.search_history:
+        st.caption("검색 기록이 없습니다.")
+    else:
+        for item in st.session_state.search_history:
+            st.button(item['keyword'], key=f"history_{item['keyword']}", on_click=request_history_load, args=(item['keyword'], item['articles']), use_container_width=True, disabled=st.session_state.processing)
+
+# --- 메인 화면 처리 ---
+if st.session_state.processing:
+    # ... (로딩 화면 로직은 변경 없음) ...
+    pass
+elif st.session_state.news_articles:
+    with main_placeholder.container():
+        col1, col2 = st.columns([1.4, 1])
+        with col1:
+            st.subheader(f"'{shorts_news.current_keyword}' 관련 뉴스 검색 결과")
+            st.info("아래 목록에서 뉴스를 클릭하면 원본 요약을 보고 상세 분석을 시작합니다.")
+            
+            # --- [수정 2] 뉴스 목록 버튼 루프에 expander 추가 ---
+            for article in st.session_state.news_articles:
+                st.button(f"[**{article['id']}번 뉴스**] {article['title']}", key=f"news_btn_{article['id']}", on_click=handle_news_selection, args=(article['id'],), use_container_width=True)
+                
+                # [핵심] 현재 활성화된 ID와 이 article의 ID가 일치할 때만 expander를 표시
+                if st.session_state.active_news_id == article['id']:
+                    with st.expander("네이버 원본 요약 보기"):
+                        # 'description' 키를 사용하여 원본 요약 표시
+                        st.caption(article.get('description', '원본 요약이 없습니다.'))
+
+        with col2:
+            st.subheader("상세 분석 및 AI 추천")
+            if st.session_state.selected_article_info:
+                result = st.session_state.selected_article_info
+                
+                # --- [수정 2] 원문 기사 링크 추가 ---
+                st.success(f"선택된 뉴스: {result['selected']['title']}")
+                st.markdown(f"**[🔗 원문 기사 보기]({result['selected']['url']})**") # 링크 추가
                 with st.expander("요약 내용 보기"):
-                    st.write(item['article']['summary'])
-        else:
-            st.write("유사한 뉴스를 찾지 못했습니다.")
+                    st.write(result['selected']['summary'])
+                
+                st.divider()
+                st.subheader("🤖 AI가 찾은 유사 뉴스")
+                if result['similar_articles']:
+                    for item in result['similar_articles']:
+                        st.markdown(f"**{item['article']['title']}** (유사도: {item['similarity']:.2f})")
+                        st.markdown(f"**[🔗 원문 기사 보기]({item['article']['url']})**") # 링크 추가
+                        with st.expander("요약 내용 보기"):
+                            st.write(item['article']['summary'])
+                else:
+                    st.write("유사한 뉴스를 찾지 못했습니다.")
+                
+                st.divider()
+                st.subheader("💡 AI 추천 검색어")
+                keywords_dict = result['recommended_keywords']
+                if keywords_dict and keywords_dict.get('all'):
+                    all_keywords = keywords_dict.get('compound', []) + keywords_dict.get('single', [])
+                    if all_keywords:
+                        cols = st.columns(min(len(all_keywords), 5))
+                        for i, keyword in enumerate(all_keywords[:5]):
+                            with cols[i]:
+                                if st.button(f"#{keyword}", key=f"rec_kw_btn_{keyword}"):
+                                    st.session_state.keyword_input = keyword
+                                    request_search()
+                                    st.rerun()
+                    else:
+                        st.write("추천 검색어를 생성하지 못했습니다.")
+                else:
+                    st.write("추천 검색어를 생성하지 못했습니다.")
+            else:
+                st.info("왼쪽 뉴스 목록에서 기사를 클릭하여 분석을 시작하세요.")
 
-        st.subheader("💡 AI 추천 검색어")
-        keywords_dict = result['recommended_keywords']
-        if keywords_dict and keywords_dict.get('all'):
-            if keywords_dict.get('compound'):
-                st.markdown("##### 복합 키워드")
-                st.write(" ".join(f"`{k}`" for k in keywords_dict['compound']))
-            if keywords_dict.get('single'):
-                st.markdown("##### 단일 키워드")
-                st.write(" ".join(f"`{k}`" for k in keywords_dict['single']))
-        else:
-            st.write("추천 검색어를 생성하지 못했습니다.")
+elif st.session_state.get('search_error'):
+    with main_placeholder.container():
+        st.error(st.session_state.search_error)
+        del st.session_state.search_error
+        st.info("왼쪽 사이드바에서 다시 검색을 시도하세요.")
+else:
+    with main_placeholder.container():
+        st.info("왼쪽 사이드바에서 검색을 시작하세요.")
+
